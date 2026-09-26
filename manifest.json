@@ -1,0 +1,16 @@
+{
+  "name": "Area VM Control Tower V3",
+  "short_name": "Area VM",
+  "description": "Live multi-device Area VM control tower — daily control, visits, money map, tasks and attendance.",
+  "start_url": "./#/dashboard",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "lang": "ar",
+  "dir": "rtl",
+  "icons": [
+    { "src": "./js/pwa/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./js/pwa/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
