@@ -326,7 +326,48 @@ window.DataService = (function () {
   /* ---------- snapshot helpers ---------- */
   function snapKey(localName, rec) {
     var c = collByName(localName); if (!c) return null;
-    return c.key(rec) || null;
+    if (rec && rec._dbId) return 'db:' + String(rec._dbId);
+    var k = c.key(rec);
+    return k != null ? 'key:' + String(k) : (rec && rec.id ? 'id:' + String(rec.id) : null);
+  }
+
+  /* c.key prefers r.id, so an optimistic record (client id) and its own Realtime row
+     (database uuid) can never match on it. Where the database itself enforces
+     c.conflictCols as a unique tuple, that tuple is a safe id-independent identity.
+     Collections without a unique index are excluded: two rows may legitimately share
+     their date/member/branch there and must not be merged. */
+  function bizKey(c, rec) {
+    if (!c || !rec || !c.conflictCols || !c.conflictCols.length) return null;
+    var shadow = {};
+    for (var k in rec) if (k !== '_dbId') shadow[k] = rec[k];
+    shadow.id = null;
+    var bk = c.key(shadow);
+    return (bk != null && bk !== '') ? String(bk) : null;
+  }
+
+  /* Reconciliation order for an incoming Realtime row: the row's own id, then the
+     _dbId already recorded on a local record, then snapKey, then the enforced
+     business key. Returns -1 only when the row is genuinely new. */
+  function reconcileIndex(c, list, rec, dbId) {
+    if (!list || !list.length) return -1;
+    var i;
+    if (dbId != null) {
+      i = list.findIndex(function (r) { return r && r.id != null && String(r.id) === String(dbId); });
+      if (i >= 0) return i;
+      i = list.findIndex(function (r) { return r && r._dbId != null && String(r._dbId) === String(dbId); });
+      if (i >= 0) return i;
+    }
+    var key = snapKey(c.local, rec);
+    if (key != null) {
+      i = list.findIndex(function (r) { return snapKey(c.local, r) === key; });
+      if (i >= 0) return i;
+    }
+    var bk = bizKey(c, rec);
+    if (bk != null) {
+      i = list.findIndex(function (r) { return bizKey(c, r) === bk; });
+      if (i >= 0) return i;
+    }
+    return -1;
   }
   function snapLoad(localName) {
     var c = collByName(localName); if (!c) return [];
@@ -709,13 +750,13 @@ window.DataService = (function () {
         var rec = c.fromDB(dbRow);
         if (!rec) return;
         rec._dbId = dbRow.id;
-        var key = snapKey(c.local, rec);
-        var idx = arr.findIndex(function (r) { return snapKey(c.local, r) === key; });
+        var idx = reconcileIndex(c, arr, rec, dbRow.id);
         if (idx >= 0) arr[idx] = rec; else arr.push(rec);
         // also fix snapshot so our own next diff sees it as synced
         var snap = api._snap[c.local] || (api._snap[c.local] = []);
-        var si = snap.findIndex(function (s) { return snapKey(c.local, s) === key; });
-        if (si >= 0) snap[si] = snapRecord(c.local, rec); else snap.push(snapRecord(c.local, rec));
+        var si = reconcileIndex(c, snap, rec, dbRow.id);
+        var sr = snapRecord(c.local, rec);
+        if (si >= 0) snap[si] = sr; else snap.push(sr);
       } else if (ev === 'delete') {
         var dbId = (payload.old && payload.old.id) || (payload.new && payload.new.id);
         arr = arr.filter(function (r) { return r._dbId !== dbId; });
@@ -740,7 +781,7 @@ window.DataService = (function () {
   function scheduleRerender() {
     clearTimeout(api._rerenderTimer);
     api._rerenderTimer = setTimeout(function () {
-      try { if (window.router) window.router(); } catch (e) { /* best effort */ }
+      try { window.__preserveScrollOnNextRender = true; if (window.router) window.router(); } catch (e) { /* best effort */ }
     }, 200);
   }
 

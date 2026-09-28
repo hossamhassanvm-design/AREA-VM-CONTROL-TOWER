@@ -107,6 +107,9 @@ window.router = router;
 
 function render() {
   ChartKit.destroyAll();
+  const keepScroll = window.__preserveScrollOnNextRender === true;
+  const savedX = keepScroll ? window.scrollX : 0;
+  const savedY = keepScroll ? window.scrollY : 0;
   const view = resolveView();
   const app = document.getElementById('appView');
   if (!app) return;
@@ -117,7 +120,16 @@ function render() {
   initBranchSelects(app);
   renderNav();
   document.title = t('brandTitle') + ' V3';
-  window.scrollTo(0, 0);
+  if (keepScroll) {
+    window.__preserveScrollOnNextRender = false;
+    requestAnimationFrame(function () {
+      requestAnimationFrame(function () {
+        window.scrollTo(savedX, savedY);
+      });
+    });
+  } else {
+    window.scrollTo(0, 0);
+  }
 }
 
 function afterLanguageChange() { render(); }

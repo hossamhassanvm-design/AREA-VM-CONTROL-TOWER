@@ -174,6 +174,17 @@ const Store = {
     });
   },
 
+  /* Run `cb` only if the write was rejected (i.e. state was rolled back and the
+     view must be re-rendered). Optimistic UI updates stay synchronous; this is
+     how a failed write becomes visible again. */
+  settleThen(promise, cb) {
+    if (!promise || !promise.then) return Promise.resolve({ ok: true });
+    return promise.then(function (r) {
+      if (r && r.ok === false && typeof cb === 'function') cb(r);
+      return r;
+    });
+  },
+
   reset() {
     if (typeof DataService !== 'undefined' && DataService.mode === 'remote') {
       toast(typeof t === 'function' ? (t('resetRemoteWarn') || 'Remote shared data is managed per-user; wipe lives in the Supabase Dashboard') : 'Remote data wipe not available');
